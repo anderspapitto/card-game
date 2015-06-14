@@ -8,24 +8,24 @@ import Game.Actions
 draw3 :: Card
 draw3 = Card
         "draw3"
-        (3 `mana`)
+        (mempty { _mana = 3 })
         [AbilityAttr (draw 3)]
 
 burn3 :: Card
 burn3 = Card
         "burn3"
-        (3 `mana`)
+        (mempty { _mana = 3 })
         [AbilityAttr (damageTarget 3)]
 
 bear :: Card
 bear = Card
         "bear"
-        (2 `gold`)
+        (mempty { _gold = 2 })
         [ CombatAttr 2
         , HitsBoard ]
 
 getPaid :: Card
 getPaid = Card
         "getpaid"
-        (0 `gold`)
-        [AbilityAttr (gain (3 `gold`))]
+        mempty
+        [AbilityAttr (gain $ mempty { _gold = 3 })]
