@@ -17,7 +17,10 @@ runGame :: GameM ()
 runGame = do
   runDraw active 5
   runDraw inactive 5
-  (runTurn >> switchTurns)
+  getUserChoice ["begin game"]
+--  logMessage "game is about to start"
+  forever (runTurn >> switchTurns)
+
 
 switchTurns :: GameM ()
 switchTurns = do
@@ -26,11 +29,6 @@ switchTurns = do
   active .= b
   inactive .= a
   active . resources . actions .= 3
-
-chooseCardInHand :: GameM Int
-chooseCardInHand = do
-  h <- use $ active . hand
-  getUserChoice h
 
 resolveCard :: Int -> GameM ()
 resolveCard n = do
@@ -44,9 +42,8 @@ resolveCard n = do
       _ -> return ()
 
 chooseAction :: GameM PlayerAction
-chooseAction = let options = [PlayCard, DrawCard, GainCoin] in do
-  n <- getUserChoice options
-  return $ options !! n
+chooseAction = let options = [PlayCard, DrawCard, GainCoin]
+               in fmap (options !!) (getUserChoice options)
 
 playerAction :: GameM ()
 playerAction = do
@@ -57,9 +54,7 @@ playerAction = do
    GainCoin -> active . resources %= (<> (mempty { _gold = 1 }))
 
 playCard :: GameM ()
-playCard = do
-  card <- chooseCardInHand
-  resolveCard card
+playCard = use (active . hand) >>= getUserChoice >>= resolveCard
 
 runTurn :: GameM ()
 runTurn = do

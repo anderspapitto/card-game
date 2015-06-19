@@ -10,22 +10,25 @@ draw3 = Card
         "draw3"
         (mempty { _mana = 3 })
         [AbilityAttr (draw 3)]
+        "book"
 
 burn3 :: Card
 burn3 = Card
         "burn3"
         (mempty { _mana = 3 })
         [AbilityAttr (damageTarget 3)]
+        "lightning"
 
 bear :: Card
 bear = Card
         "bear"
         (mempty { _gold = 2 })
-        [ CombatAttr 2
-        , HitsBoard ]
+        [ CombatAttr 2, HitsBoard ]
+        "bear"
 
 getPaid :: Card
 getPaid = Card
         "getpaid"
         mempty
         [AbilityAttr (gain $ mempty { _gold = 3 })]
+        "handful-coins"

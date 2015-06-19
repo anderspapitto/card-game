@@ -1,4 +1,5 @@
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Main where
 
@@ -6,6 +7,7 @@ import Game.Shell
 import Game.DataTypes
 import Game.Cards
 import Game.Logic
+import Game.FreeInterp
 
 import Control.Lens
 import Control.Monad.Fix
@@ -16,14 +18,24 @@ import Reflex.Dom hiding (attributes)
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Free
 import Control.Monad.Identity
-import Data.Map (fromList)
+import Data.Map (toList, fromList)
 import Data.Maybe (isJust)
+import Data.Monoid
 
 randPerm :: StdGen -> [a] -> [a]
 randPerm   _ [] = []
 randPerm gen xs = let (n, newGen) = randomR (0, length xs - 1) gen
                       front = xs !! n
                   in front : randPerm newGen (take n xs ++ drop (n+1) xs)
+
+buttonifiedList :: MonadWidget t m => Dynamic t [ String ] -> m (Event t Int)
+buttonifiedList options = do
+  asMap <- mapDyn (fromList . map (\(i,x) -> ((i,x), x)) . zip [(0::Int)..]) options
+  foo <- listWithKey asMap go
+  let x = (fmap (fst .fst . head . toList) (updated foo))
+  return x
+ where
+   go _ dv = dyn =<< mapDyn button dv
 
 baseDeck :: [Card]
 baseDeck = concat
@@ -38,8 +50,8 @@ deck1 = randPerm (mkStdGen 5) baseDeck
 deck2 = randPerm (mkStdGen 6) baseDeck
 
 initial_game_state :: Game
-initial_game_state = Game (Player (Cost 9 9 9 9 3) 100 [] deck1 [] (PlayerId 0))
-                          (Player (Cost 9 9 9 9 3) 100 [] deck2 [] (PlayerId 1))
+initial_game_state = Game (Player (Cost 9 9 9 9 3) [] deck1 [] (PlayerId 0))
+                          (Player (Cost 9 9 9 9 3) [] deck2 [] (PlayerId 1))
                           Nothing
 
 initial_game :: Foo Game
@@ -49,22 +61,22 @@ initial_game = case runIdentity $ runFreeT $ execStateT runGame initial_game_sta
 
 displayList :: MonadWidget t m => Dynamic t [String] -> m ()
 displayList d = do
-  asMap <- mapDyn (fromList . zip [(1::Int)..]) d
+  asMap <- mapDyn (fromList . zip [(0::Int)..]) d
   void $ el "ol" $ list asMap (el "li" . dynText)
 
-getSelections :: MonadWidget t m => Dynamic t [String] -> m (Event t Int)
-getSelections prompt = do
-  -- lstDyn <- holdDyn ["foo"] (updated prompt)
-  -- lst <- sample $ current lstDyn
-  -- if length lst > 0
-  -- then do
-    el "div" $ text "Please enter a number corresponding to one of the following options"
-    displayList prompt
-    inp <- el "div" $ textInput $ def & textInputConfig_inputType .~ "number"
-    return $ attachDynWithMaybe (const . (fmap (\x -> x - 1) . readMaybe))
-                                (inp ^. textInput_value)
-                                (textInputGetEnter inp)
-  -- else return never
+dynButton :: MonadWidget t m => Dynamic t String -> m (Event t ())
+dynButton = fmap (_el_clicked . fst) . el' "button" . dynText
+
+listChoice :: MonadWidget t m => Dynamic t [String] -> m (Event t Int)
+listChoice choices = el "div" $ do
+  asMap <- mapDyn (fromList . zip [(0::Int)..]) choices
+  evs <- listWithKey asMap (const dynButton)
+  fmap switchPromptlyDyn $ mapDyn (leftmost . map keyEvent . toList) evs
+ where
+  keyEvent = uncurry (fmap . const)
+
+options :: MonadWidget t m => Dynamic t Int -> m (Dynamic t [String])
+options = mapDyn (\x -> map show [0..(x+2)])
 
 stepGame :: (Reflex t, MonadHold t m, MonadFix m) => Event t Int -> m (Dynamic t (Foo Game))
 stepGame selections = foldDyn step initial_game selections
@@ -92,39 +104,58 @@ displayGame g = do
 
 displayResources :: MonadWidget t m => Dynamic t Cost -> m ()
 displayResources rr = do
-  displayList =<< mapDyn asPieces rr
-  where
-    asPieces r = [ "Gold: " ++ show (r ^. gold)
-                 , "Mana: " ++ show (r ^. mana)
-                 , "Belief: " ++ show (r ^. belief)
-                 , "Research: " ++ show (r ^. research)
-                 , "Actions: " ++ show (r ^. actions)
-                 ]
+  mapDyn (^. gold     . to show . to (" " ++)) rr >>= dynText >> goldCoin
+  mapDyn (^. mana     . to show . to (" " ++)) rr >>= dynText >> flame
+  mapDyn (^. belief   . to show . to (" " ++)) rr >>= dynText >> pray
+  mapDyn (^. research . to show . to (" " ++)) rr >>= dynText >> brain
+  mapDyn (^. actions  . to show . to (" " ++)) rr >>= dynText >> clock
+
+displayCardList :: MonadWidget t m => Dynamic t [Card] -> m ()
+displayCardList h = do
+  void $ elDynHtml' "div" =<< do
+    forDyn h $ \cs -> concat (map (\c -> "<img height=50 width=50 src=/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. img) ++ ">") cs)
 
 displayPlayer :: MonadWidget t m => Dynamic t Player -> m ()
 displayPlayer player = el "div" $ do
   el "div" $ do
-    text "Health: "
-    dynText =<< mapDyn (show . (^. health)) player
-  el "resources" $ do
-    text "Resources: "
     displayResources =<< mapDyn (^. resources) player
   el "div" $ do
-    text "Cards in Hand: "
-    displayList =<< mapDyn (map show . (^. hand)) player
+    text "Hand: "
+    displayCardList =<< mapDyn (^. hand) player
   el "div" $ do
     text "Cards in Deck: "
     dynText =<< mapDyn (show . length . (^. deck)) player
   el "div" $ do
-    text "Cards on Board: "
-    displayList =<< mapDyn (map show . (^. board)) player
+    text "Board: "
+    displayCardList =<< mapDyn (^. board) player
 
 main :: IO ()
 main = mainWidget $ el "div" $ do
   el "p" $ text "Welcome to Card Game"
   rec
-    selections   <- getSelections prompts
+    selections   <- listChoice prompts
     _            <- displayGame d
     game         <- stepGame selections
     (prompts, d) <- mapDyn (\(p, g, _) -> (p, g)) game >>= splitDyn
   return ()
+
+makeImage :: MonadWidget t m => String -> Int -> m ()
+makeImage path size = elAttr "img"
+                      ("src" =: ("/home/anders/devel/card-game/images/by-canon-name/" ++ path)
+                       <> "width" =: (show size) <> "height" =: (show size))
+                      (return ())
+
+goldCoin :: MonadWidget t m => m ()
+goldCoin = makeImage "gold-coin" 32
+
+flame :: MonadWidget t m => m ()
+flame = makeImage "flame" 32
+
+pray :: MonadWidget t m => m ()
+pray = makeImage "pray" 32
+
+brain :: MonadWidget t m => m ()
+brain = makeImage "brain" 32
+
+clock :: MonadWidget t m => m ()
+clock = makeImage "clock" 32

@@ -62,6 +62,7 @@ data Card = Card
   { _name       :: String
   , _cost       :: Cost
   , _attributes :: [ Attribute ]
+  , _img        :: String
   }
 
 instance Show Card where
@@ -79,7 +80,6 @@ newtype PlayerId = PlayerId { _getPlayerId :: Int } deriving (Eq, Show)
 
 data Player = Player
   { _resources :: Cost
-  , _health    :: Int
   , _hand      :: [Card]
   , _deck      :: [Card]
   , _board     :: [Card]
@@ -94,9 +94,11 @@ data Game = Game
 
 data InteractionF x
   = GetUserChoice [String] Game (Int -> x)
+  | LogMessage String
 
 instance Functor InteractionF where
   fmap f (GetUserChoice s g k) = GetUserChoice s g (f . k)
+  fmap f (LogMessage s) = LogMessage s
 
 type Interaction m a = FreeT InteractionF m a
 
@@ -106,10 +108,12 @@ getUserChoice :: Show a => [a] -> GameM Int
 getUserChoice options = do
   g <- get
   ret <- liftF $ GetUserChoice (map show options) g id
-  if ret < length options
+  if ret < length options && ret >= 0
     then return ret
     else getUserChoice options
 
+logMessage :: String -> GameM ()
+logMessage = liftF . LogMessage
 
 data PlayerAction
   = PlayCard
