@@ -1,26 +1,35 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Main where
 
-import Game.Shell
-import Game.DataTypes
-import Game.Cards
-import Game.Logic
-import Game.FreeInterp
+import           Control.Concurrent
+import           Control.Lens
+import           Control.Monad.Fix
+import           Control.Monad.IO.Class
+import           Control.Monad.Identity
+import           Control.Monad.Trans.Either
+import           Control.Monad.Trans.Free
+import           Control.Monad.Trans.State
+import           Data.Aeson
+import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy.Char8 as BC
+import           Data.Map (toList, fromList)
+import           Data.Maybe (isJust)
+import           Data.Monoid
+import           Network.HTTP
+import           Reflex
+import           Reflex.Dom hiding (attributes)
+import           System.Random
+import           Text.Read (readMaybe)
 
-import Control.Lens
-import Control.Monad.Fix
-import Text.Read (readMaybe)
-import System.Random
-import Reflex
-import Reflex.Dom hiding (attributes)
-import Control.Monad.Trans.State
-import Control.Monad.Trans.Free
-import Control.Monad.Identity
-import Data.Map (toList, fromList)
-import Data.Maybe (isJust)
-import Data.Monoid
+import           Game.ApiServer
+import           Game.Cards
+import           Game.DataTypes
+import qualified Game.Display as Display
+import           Game.FreeInterp
+import           Game.Logic
 
 randPerm :: StdGen -> [a] -> [a]
 randPerm   _ [] = []
@@ -35,7 +44,7 @@ buttonifiedList options = do
   let x = (fmap (fst .fst . head . toList) (updated foo))
   return x
  where
-   go _ dv = dyn =<< mapDyn button dv
+  go _ dv = dyn =<< mapDyn button dv
 
 baseDeck :: [Card]
 baseDeck = concat
@@ -54,90 +63,72 @@ initial_game_state = Game (Player (Cost 9 9 9 9 3) [] deck1 [] (PlayerId 0))
                           (Player (Cost 9 9 9 9 3) [] deck2 [] (PlayerId 1))
                           Nothing
 
-initial_game :: Foo Game
-initial_game = case runIdentity $ runFreeT $ execStateT runGame initial_game_state of
-  Free (GetUserChoice s g f) -> (s, Just g, Just f)
-  Pure _                     -> error "not ok"
+initial_game :: Interaction Identity ()
+initial_game = void $ execStateT runGame initial_game_state
 
-displayList :: MonadWidget t m => Dynamic t [String] -> m ()
-displayList d = do
-  asMap <- mapDyn (fromList . zip [(0::Int)..]) d
-  void $ el "ol" $ list asMap (el "li" . dynText)
+listChoice :: MonadWidget t m => [String] -> m (Event t Int)
+listChoice = fmap leftmost . mapM button' . zip [0..]
+  where button' (i, s) = fmap (const i) <$> button s
 
-dynButton :: MonadWidget t m => Dynamic t String -> m (Event t ())
-dynButton = fmap (_el_clicked . fst) . el' "button" . dynText
-
-listChoice :: MonadWidget t m => Dynamic t [String] -> m (Event t Int)
-listChoice choices = el "div" $ do
-  asMap <- mapDyn (fromList . zip [(0::Int)..]) choices
-  evs <- listWithKey asMap (const dynButton)
-  fmap switchPromptlyDyn $ mapDyn (leftmost . map keyEvent . toList) evs
- where
-  keyEvent = uncurry (fmap . const)
-
-options :: MonadWidget t m => Dynamic t Int -> m (Dynamic t [String])
-options = mapDyn (\x -> map show [0..(x+2)])
-
-stepGame :: (Reflex t, MonadHold t m, MonadFix m) => Event t Int -> m (Dynamic t (Foo Game))
-stepGame selections = foldDyn step initial_game selections
-
-displayGame :: MonadWidget t m => Dynamic t (Maybe DisplayInfo) -> m ()
+displayGame :: MonadWidget t m => Display.Game -> m ()
 displayGame g = do
-  mostRecentGame <- let foobar mg og = case mg of
-                          Just ng -> ng
-                          Nothing -> og
-                    in foldDyn foobar (initial_game_state :: Game) (updated g)
-  isGame <- mapDyn isJust g
-  doShowDyn <- holdDyn True (updated isGame)
-  doShow <- sample $ current doShowDyn
-  when doShow $ do
-    el "br" $ text ""
-    elAttr "div" (fromList [("style", "width: 100%; display: table;")]) $ do
-      elAttr "div" (fromList [("style", "display: table-row;")]) $ do
-        elAttr "div" (fromList [("style", "display: table-cell; width; 50%;")]) $ do
-          text "Active Player"
-          displayPlayer =<< mapDyn (^. active) mostRecentGame
-        elAttr "div" (fromList [("style", "display: table-cell; width; 50%;")]) $ do
-          text "Inactive Player"
-          displayPlayer =<< mapDyn (^. inactive) mostRecentGame
+  el "br" $ text ""
+  elAttr "div" (fromList [("style", "width: 100%; display: table;")]) $ do
+    elAttr "div" (fromList [("style", "display: table-row;")]) $ do
+      elAttr "div" (fromList [("style", "display: table-cell; width; 50%;")]) $ do
+        text "Active Player"
+        displayPlayer (g ^. Display.active)
+      elAttr "div" (fromList [("style", "display: table-cell; width; 50%;")]) $ do
+        text "Inactive Player"
+        displayPlayer (g ^. Display.inactive)
   return ()
 
-displayResources :: MonadWidget t m => Dynamic t Cost -> m ()
+displayResources :: MonadWidget t m => Display.Cost -> m ()
 displayResources rr = do
-  mapDyn (^. gold     . to show . to (" " ++)) rr >>= dynText >> goldCoin
-  mapDyn (^. mana     . to show . to (" " ++)) rr >>= dynText >> flame
-  mapDyn (^. belief   . to show . to (" " ++)) rr >>= dynText >> pray
-  mapDyn (^. research . to show . to (" " ++)) rr >>= dynText >> brain
-  mapDyn (^. actions  . to show . to (" " ++)) rr >>= dynText >> clock
+  text (rr ^. Display.gold     . to show . to (" " ++)) >> goldCoin
+  text (rr ^. Display.mana     . to show . to (" " ++)) >> flame
+  text (rr ^. Display.belief   . to show . to (" " ++)) >> pray
+  text (rr ^. Display.research . to show . to (" " ++)) >> brain
+  text (rr ^. Display.actions  . to show . to (" " ++)) >> clock
 
-displayCardList :: MonadWidget t m => Dynamic t [Card] -> m ()
-displayCardList h = do
-  void $ elDynHtml' "div" =<< do
-    forDyn h $ \cs -> concat (map (\c -> "<img height=50 width=50 src=/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. img) ++ ">") cs)
+displayCardList :: MonadWidget t m => [Display.Card] -> m ()
+displayCardList h = void $ el "div" $ forM_ h (\c ->
+  elAttr "img" ("height" =: "50" <>
+                "width"  =: "50" <>
+                "src"    =: ("/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. Display.img))) $ text "")
 
-displayPlayer :: MonadWidget t m => Dynamic t Player -> m ()
+displayPlayer :: MonadWidget t m => Display.Player -> m ()
 displayPlayer player = el "div" $ do
   el "div" $ do
-    displayResources =<< mapDyn (^. resources) player
+    displayResources (player ^. Display.resources)
   el "div" $ do
     text "Hand: "
-    displayCardList =<< mapDyn (^. hand) player
+    displayCardList (player ^. Display.hand)
   el "div" $ do
     text "Cards in Deck: "
-    dynText =<< mapDyn (show . length . (^. deck)) player
+    text $ player ^. Display.deck . to show
   el "div" $ do
     text "Board: "
-    displayCardList =<< mapDyn (^. board) player
+    displayCardList (player ^. Display.board)
 
-main :: IO ()
-main = mainWidget $ el "div" $ do
-  el "p" $ text "Welcome to Card Game"
-  rec
-    selections   <- listChoice prompts
-    _            <- displayGame d
-    game         <- stepGame selections
-    (prompts, d) <- mapDyn (\(p, g, _) -> (p, g)) game >>= splitDyn
-  return ()
+bar :: MonadWidget t m => (Maybe Int) -> Workflow t m (Maybe Int)
+bar mi = Workflow $ do
+  liftIO $ runEitherT (sendInput mi)
+  Right foo <- liftIO $ runEitherT getGameState
+  case foo of
+    Just (g, s) -> do
+      foo <- fmap Just <$> (listChoice s <* displayGame g)
+      return (mi, fmap bar foo)
+    Nothing -> return (Nothing, never)
+
+-- interpreter
+--   :: MonadWidget t m
+--   => Interaction Identity ()
+--   -> m (Event t (Either () (Interaction Identity ())))
+-- interpreter p = case runIdentity (runFreeT p) of
+--   Free (GetUserChoice s g k) -> fmap (Right . k) <$> (listChoice s <* displayGame g)
+--   Free (LogMessage s)        -> undefined
+--   Pure ()                    -> once (Left ())
 
 makeImage :: MonadWidget t m => String -> Int -> m ()
 makeImage path size = elAttr "img"
@@ -159,3 +150,14 @@ brain = makeImage "brain" 32
 
 clock :: MonadWidget t m => m ()
 clock = makeImage "clock" 32
+
+fooMain :: IO ()
+fooMain = mainWidget $ el "div" $ do
+  el "p" $ text "Welcome to Card Game"
+  workflowView (bar Nothing)
+  return ()
+
+main :: IO ()
+main = do
+  forkIO $ apiMain initial_game
+  fooMain

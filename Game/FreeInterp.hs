@@ -5,7 +5,7 @@
 
 {-# LANGUAGE RecursiveDo #-}
 
-module Game.FreeInterp (once, runInterpret) where
+module Game.FreeInterp (once, runInterpret, runRemoteInterpret) where
 
 import Reflex
 import Reflex.Dom
@@ -29,4 +29,14 @@ runInterpret
 runInterpret interpret val endHook = do
   rec (done, step) <- splitEither <$> (dyn interpWidget >>= switchPromptly never)
       interpWidget <- holdDyn val step >>= mapDyn interpret
+  performEvent_ $ ffor done (const endHook)
+
+runRemoteInterpret
+  :: MonadWidget t m
+  => m (Event t (Either (m ()) ()))
+  -> WidgetHost m ()
+  -> m ()
+runRemoteInterpret interpret endHook = do
+  rec (done, step) <- splitEither <$> (dyn interpWidget >>= switchPromptly never)
+      interpWidget <- holdDyn () step >>= mapDyn (interpret)
   performEvent_ $ ffor done (const endHook)

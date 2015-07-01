@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Game.DataTypes where
@@ -7,6 +8,9 @@ module Game.DataTypes where
 import Control.Lens
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Free
+import Data.Aeson
+import Data.Aeson.TH
+import GHC.Generics
 
 type Activate = Cost
 data Damage = Damage Int () deriving (Show)
@@ -90,7 +94,7 @@ data Game = Game
   { _active    :: Player
   , _inactive  :: Player
   , _winner    :: Maybe PlayerId
-  } deriving (Show)
+  } deriving (Show, Generic)
 
 data InteractionF x
   = GetUserChoice [String] Game (Int -> x)
