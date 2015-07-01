@@ -11,14 +11,8 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Identity
 import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.Free
-import           Control.Monad.Trans.State
-import           Data.Aeson
-import qualified Data.ByteString.Lazy as B
-import qualified Data.ByteString.Lazy.Char8 as BC
-import           GHC.Generics
 import           Game.DataTypes
 import qualified Game.Display as Display
-import           Network.HTTP
 import           Network.Wai
 import           Network.Wai.Handler.Warp
 import           Servant
@@ -35,18 +29,18 @@ serveGame game = do
   p <- liftIO $ readMVar game
   return $ case runIdentity $ runFreeT p of
     Free (GetUserChoice s g _) -> Just (Display.displayGame g, s)
-    Free (LogMessage s)        -> undefined
+    Free (LogMessage s)        -> undefined s
     Pure ()                    -> Nothing
 
 serveInput
   :: MVar (Interaction Identity ())
   -> Maybe Int
   -> EitherT ServantErr IO ()
-serveInput game i = case i of
+serveInput game mi = case mi of
   Nothing -> return ()
   Just i -> liftIO $ modifyMVar_ game $ \p -> case runIdentity $ runFreeT p of
     Free (GetUserChoice _ _ k) -> return $ k i
-    Free (LogMessage s)        -> undefined
+    Free (LogMessage s)        -> undefined s
     Pure ()                    -> undefined
 
 server :: MVar (Interaction Identity ()) -> Server GameApi
@@ -58,6 +52,8 @@ gameAPI = Proxy
 app :: MVar (Interaction Identity ()) -> Application
 app game = serve gameAPI (server game)
 
+getGameState :: EitherT ServantError IO (Maybe (Display.Game, [String]))
+sendInput :: Maybe Int -> EitherT ServantError IO ()
 getGameState :<|> sendInput = client gameAPI (BaseUrl Http "localhost" 8081)
 
 apiMain :: (Interaction Identity ()) -> IO ()

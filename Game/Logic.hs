@@ -17,7 +17,6 @@ runGame :: GameM ()
 runGame = do
   runDraw active 5
   runDraw inactive 5
-  getUserChoice ["begin game"]
 --  logMessage "game is about to start"
   forever (runTurn >> switchTurns)
 

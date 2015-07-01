@@ -6,29 +6,20 @@ module Main where
 
 import           Control.Concurrent
 import           Control.Lens
-import           Control.Monad.Fix
 import           Control.Monad.IO.Class
 import           Control.Monad.Identity
 import           Control.Monad.Trans.Either
-import           Control.Monad.Trans.Free
 import           Control.Monad.Trans.State
-import           Data.Aeson
-import qualified Data.ByteString.Lazy as B
-import qualified Data.ByteString.Lazy.Char8 as BC
 import           Data.Map (toList, fromList)
-import           Data.Maybe (isJust)
 import           Data.Monoid
-import           Network.HTTP
 import           Reflex
 import           Reflex.Dom hiding (attributes)
 import           System.Random
-import           Text.Read (readMaybe)
 
 import           Game.ApiServer
 import           Game.Cards
 import           Game.DataTypes
 import qualified Game.Display as Display
-import           Game.FreeInterp
 import           Game.Logic
 
 randPerm :: StdGen -> [a] -> [a]
@@ -121,15 +112,6 @@ bar mi = Workflow $ do
       return (mi, fmap bar foo)
     Nothing -> return (Nothing, never)
 
--- interpreter
---   :: MonadWidget t m
---   => Interaction Identity ()
---   -> m (Event t (Either () (Interaction Identity ())))
--- interpreter p = case runIdentity (runFreeT p) of
---   Free (GetUserChoice s g k) -> fmap (Right . k) <$> (listChoice s <* displayGame g)
---   Free (LogMessage s)        -> undefined
---   Pure ()                    -> once (Left ())
-
 makeImage :: MonadWidget t m => String -> Int -> m ()
 makeImage path size = elAttr "img"
                       ("src" =: ("/home/anders/devel/card-game/images/by-canon-name/" ++ path)
@@ -159,5 +141,5 @@ fooMain = mainWidget $ el "div" $ do
 
 main :: IO ()
 main = do
-  forkIO $ apiMain initial_game
+  _ <- forkIO (apiMain initial_game)
   fooMain

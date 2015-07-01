@@ -8,8 +8,6 @@ module Game.DataTypes where
 import Control.Lens
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Free
-import Data.Aeson
-import Data.Aeson.TH
 import GHC.Generics
 
 type Activate = Cost
@@ -102,7 +100,7 @@ data InteractionF x
 
 instance Functor InteractionF where
   fmap f (GetUserChoice s g k) = GetUserChoice s g (f . k)
-  fmap f (LogMessage s) = LogMessage s
+  fmap _ (LogMessage s) = LogMessage s
 
 type Interaction m a = FreeT InteractionF m a
 

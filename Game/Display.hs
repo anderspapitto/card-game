@@ -6,9 +6,7 @@
 module Game.Display where
 
 import Control.Lens
-import Data.Aeson
 import Data.Aeson.TH
-import GHC.Generics
 
 import qualified Game.DataTypes as D
 import Game.DataTypes (PlayerId)
