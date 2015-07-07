@@ -1,9 +1,11 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Main where
 
+import           Clay (render, putCss)
 import           Control.Concurrent
 import           Control.Lens
 import           Control.Monad.IO.Class
@@ -12,11 +14,14 @@ import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.State
 import           Data.Map (toList, fromList)
 import           Data.Monoid
+import           Data.Text.Encoding
+import           Data.Text.Lazy (toStrict)
 import           Reflex
 import           Reflex.Dom hiding (attributes)
 import           System.Random
 
 import           Game.ApiServer
+import           Game.Css
 import           Game.Cards
 import           Game.DataTypes
 import qualified Game.Display as Display
@@ -43,6 +48,7 @@ baseDeck = concat
   , replicate 10 bear
   , replicate 10 burn3
   , replicate 10 draw3
+  , replicate 5 base
   ]
 
 deck1, deck2 :: [Card]
@@ -64,43 +70,61 @@ listChoice = fmap leftmost . mapM button' . zip [0..]
 displayGame :: MonadWidget t m => Display.Game -> m ()
 displayGame g = do
   el "br" $ text ""
-  elAttr "div" (fromList [("style", "width: 100%; display: table;")]) $ do
-    elAttr "div" (fromList [("style", "display: table-row;")]) $ do
-      elAttr "div" (fromList [("style", "display: table-cell; width; 50%;")]) $ do
+  elAttr "div" ("style" =: "width: 100%; display: table;") $ do
+    elAttr "div" ("style" =: "display: table-row;") $ do
+      elAttr "div" ("style" =: "display: table-cell; width; 50%;") $ do
         text "Active Player"
         displayPlayer (g ^. Display.active)
-      elAttr "div" (fromList [("style", "display: table-cell; width; 50%;")]) $ do
+      elAttr "div" ("style" =: "display: table-cell; width; 50%;") $ do
         text "Inactive Player"
         displayPlayer (g ^. Display.inactive)
   return ()
 
 displayResources :: MonadWidget t m => Display.Cost -> m ()
 displayResources rr = do
-  text (rr ^. Display.gold     . to show . to (" " ++)) >> goldCoin
-  text (rr ^. Display.mana     . to show . to (" " ++)) >> flame
-  text (rr ^. Display.belief   . to show . to (" " ++)) >> pray
-  text (rr ^. Display.research . to show . to (" " ++)) >> brain
-  text (rr ^. Display.actions  . to show . to (" " ++)) >> clock
+  foo (rr ^. Display.gold    ) goldCoin
+  foo (rr ^. Display.mana    ) flame
+  foo (rr ^. Display.belief  ) pray
+  foo (rr ^. Display.research) brain
+  foo (rr ^. Display.actions ) clock
+ where
+   foo i x = elAttr "div" ("style" =: "height: 48") $ do
+     replicateM (i `div` 5) (x 40)
+     replicateM (i `mod` 5) (x 32)
+     return ()
 
 displayCardList :: MonadWidget t m => [Display.Card] -> m ()
-displayCardList h = void $ el "div" $ forM_ h (\c ->
-  elAttr "img" ("height" =: "50" <>
-                "width"  =: "50" <>
-                "src"    =: ("/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. Display.img))) $ text "")
+displayCardList h = do
+  void $ elAttr "div" ("class" =: "flex") $ mapM_ displayCard h
+
+displayCard :: MonadWidget t m => Display.Card -> m ()
+displayCard c =
+    el "div" $ do
+      el "t1" $ text (c ^. Display.name)
+      elAttr "img" ("class" =: "imgfloat" <> "src"    =: path c) $ text ""
+      case c ^. Display.health of
+        Nothing -> return ()
+        Just (total, current) -> el "t2" $ text (show total ++ " (" ++ show current ++ ")")
+      forM_ (c ^. Display.effects) $ \e ->
+        el "div" $ text (e ^. Display.description)
+      forM_ (c ^. Display.abilities) $ \a ->
+        el "div" $ text (a ^. Display.description)
+ where path c = "/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. Display.img)
 
 displayPlayer :: MonadWidget t m => Display.Player -> m ()
 displayPlayer player = el "div" $ do
   el "div" $ do
     displayResources (player ^. Display.resources)
-  el "div" $ do
+  el "p" $ do
     text "Hand: "
     displayCardList (player ^. Display.hand)
-  el "div" $ do
+  el "p" $ do
     text "Cards in Deck: "
     text $ player ^. Display.deck . to show
   el "div" $ do
     text "Board: "
     displayCardList (player ^. Display.board)
+  el "br" $ text ""
 
 bar :: MonadWidget t m => (Maybe Int) -> Workflow t m (Maybe Int)
 bar mi = Workflow $ do
@@ -118,28 +142,29 @@ makeImage path size = elAttr "img"
                        <> "width" =: (show size) <> "height" =: (show size))
                       (return ())
 
-goldCoin :: MonadWidget t m => m ()
-goldCoin = makeImage "gold-coin" 32
+goldCoin :: MonadWidget t m => Int -> m ()
+goldCoin = makeImage "gold-coin"
 
-flame :: MonadWidget t m => m ()
-flame = makeImage "flame" 32
+flame :: MonadWidget t m => Int -> m ()
+flame = makeImage "flame"
 
-pray :: MonadWidget t m => m ()
-pray = makeImage "pray" 32
+pray :: MonadWidget t m => Int -> m ()
+pray = makeImage "pray"
 
-brain :: MonadWidget t m => m ()
-brain = makeImage "brain" 32
+brain :: MonadWidget t m => Int -> m ()
+brain = makeImage "brain"
 
-clock :: MonadWidget t m => m ()
-clock = makeImage "clock" 32
+clock :: MonadWidget t m => Int -> m ()
+clock = makeImage "clock"
 
 fooMain :: IO ()
-fooMain = mainWidget $ el "div" $ do
+fooMain = mainWidgetWithCss (encodeUtf8 . toStrict $ render gameCss) $ el "div" $ do
   el "p" $ text "Welcome to Card Game"
   workflowView (bar Nothing)
   return ()
 
 main :: IO ()
 main = do
+  putCss gameCss
   _ <- forkIO (apiMain initial_game)
   fooMain

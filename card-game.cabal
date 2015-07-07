@@ -23,6 +23,7 @@ executable card-game
                      , aeson >= 0.8 && <0.9
                      , base >=4.8 && <4.9
                      , bytestring >= 0.10.6.0
+                     , clay >= 0.10
                      , containers >=0.5 && <0.6
                      , either >= 4.3
                      , free >=4.11 && <4.12
@@ -33,6 +34,7 @@ executable card-game
                      , reflex-dom >=0.1 && <0.2
                      , servant-client >= 0.4 && <0.5
                      , servant-server >= 0.4 && <0.5
+                     , text >= 1.2
                      , time >= 1.5 && <1.6
                      , transformers >=0.4 && <0.5
                      , wai >= 3.0 && <3.1

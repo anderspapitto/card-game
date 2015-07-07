@@ -40,14 +40,19 @@ data Cost = Cost
 displayCost :: D.Cost -> Cost
 displayCost (D.Cost g m b r a) = Cost g m b r a
 
+
 data Card = Card
   { _name       :: String
   , _cost       :: Cost
+  , _hitsBoard  :: Bool
+  , _health     :: Maybe (Int, Int)
+  , _effects    :: [Ability]
+  , _abilities  :: [Ability]
   , _img        :: String
   } deriving (Show)
 
 displayCard :: D.Card -> Card
-displayCard (D.Card n c _ i) = Card n (displayCost c) i
+displayCard (D.Card n c hb h e a i) = Card n (displayCost c) hb h (map displayAbility e) (map displayAbility a) i
 
 data Attribute
   = AbilityAttr Ability
@@ -55,6 +60,7 @@ data Attribute
   | Tag String
   | Health Int Int
   | HitsBoard
+  | DelayedAbilityAttr Ability
   deriving (Show)
 
 displayAttribute :: D.Attribute -> Attribute
@@ -93,6 +99,7 @@ deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''PlayerId
 deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''Player
 deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''Game
 
+makeLenses ''Ability
 makeLenses ''Card
 makeLenses ''Game
 makeLenses ''Player

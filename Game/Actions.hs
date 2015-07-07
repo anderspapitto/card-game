@@ -18,21 +18,21 @@ foo f = do
   (active . board) %= catMaybes . map f
   return ()
 
-chooseTarget :: GameM Int
+-- chooseTarget :: GameM Int
 chooseTarget = do
   i <- getUserChoice ["Active Player", "Inactive Player"]
   p <- use (if i == 0 then active else inactive)
-  getUserChoice (p ^. board)
+  n <- getUserChoice (p ^. board)
+  return (if i == 0 then active else inactive, n)
 
-damage :: Int -> Int -> GameM ()
-damage amount target = do
-  active . board %= tweak
+-- damage :: Int -> Int -> GameM ()
+damage amount player target = do
+  player . board %= tweak
  where
   tweak l = take target l ++ [applyDamage (l !! target)] ++ drop (target + 1) l
-  applyDamage card = card { _attributes = [reduceHealth attr | attr <- card ^. attributes] }
-  reduceHealth attr = case attr of
-    Health total current -> Health total (current - amount)
-    x -> x
+  applyDamage = health %~ f
+  f Nothing = Nothing
+  f (Just (total, current)) = Just (total, (current - amount))
 
 pay :: Cost -> GameM Bool
 pay (Cost a1 b1 c1 d1 e1) = do
@@ -62,12 +62,12 @@ loseGame _ = do
 
 damageTarget :: Int -> Ability
 damageTarget x = Ability ("Deal " ++ show x ++ " damage") go where
-  go = chooseTarget >>= damage x
+  go = chooseTarget >>= \(p, n) -> damage x p n
 
 draw :: Int -> Ability
 draw x = Ability ("Draw " ++ show x ++ " cards") go where
   go = runDraw active 3
 
 gain :: Cost -> Ability
-gain x = Ability ("Gain " ++ show x ++ " of something") go where
+gain x = Ability ("Gain " ++ show x) go where
   go = active . resources %= (<> x)

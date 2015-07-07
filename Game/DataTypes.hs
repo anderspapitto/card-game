@@ -6,8 +6,9 @@
 module Game.DataTypes where
 
 import Control.Lens
-import Control.Monad.Trans.State
 import Control.Monad.Trans.Free
+import Control.Monad.Trans.State
+import Data.List
 import GHC.Generics
 
 type Activate = Cost
@@ -49,7 +50,12 @@ data Cost = Cost
   , _belief   :: Int
   , _research :: Int
   , _actions  :: Int
-  } deriving (Show)
+  }
+
+instance Show Cost where
+  show (Cost g m b r a) =
+    let pairs = [(g, "gold"), (m, "mana"), (b, "belief"), (r, "reserach"), (a, "actions")]
+    in intercalate " and " $ map (\(x, name) -> show x ++ " " ++ name) $ filter ((/= 0) . fst) pairs
 
 instance Monoid Cost where
   mempty = Cost 0 0 0 0 0
@@ -63,7 +69,10 @@ instance Monoid Cost where
 data Card = Card
   { _name       :: String
   , _cost       :: Cost
-  , _attributes :: [ Attribute ]
+  , _hitsBoard  :: Bool
+  , _health     :: Maybe (Int, Int)
+  , _effects    :: [Ability]
+  , _abilities  :: [Ability]
   , _img        :: String
   }
 
@@ -76,6 +85,7 @@ data Attribute
   | Tag String
   | Health Int Int -- | total and current (minus damage)
   | HitsBoard
+  | DelayedAbilityAttr Ability
   deriving (Show)
 
 newtype PlayerId = PlayerId { _getPlayerId :: Int } deriving (Eq, Show)
@@ -121,11 +131,13 @@ data PlayerAction
   = PlayCard
   | DrawCard
   | GainCoin
+  | SelectCardOnBoard
   deriving (Show)
 
 -- Derive lenses
 --
 
+makeLenses ''Ability
 makeLenses ''Card
 makeLenses ''Game
 makeLenses ''Player

@@ -1,7 +1,7 @@
 { stdenv, haskellPackages, nodejs }:
 
 let env = haskellPackages.ghcWithPackages (p: with p; [
-      cabal-install lens random reflex-dom servant network wai warp servant-server network HTTP servant-client
+      cabal-install lens random reflex-dom servant network wai warp servant-server network HTTP servant-client free clay text
     ]);
 in
   stdenv.mkDerivation {

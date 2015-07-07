@@ -35,13 +35,12 @@ resolveCard n = do
   paid <- pay $ card ^. cost
   when paid $ do
     active . hand %= (\l -> take n l ++ drop (n+1) l)
-    forM_ (card ^. attributes) $ \attr -> case attr of
-      AbilityAttr (Ability _ ability) -> ability
-      HitsBoard -> active . board %= ([card] ++)
-      _ -> return ()
+    forM_ (card ^. effects) $ \effect -> effect ^. runAbility
+    when (card ^. hitsBoard) $
+      active . board %= (card :)
 
 chooseAction :: GameM PlayerAction
-chooseAction = let options = [PlayCard, DrawCard, GainCoin]
+chooseAction = let options = [PlayCard, DrawCard, GainCoin, SelectCardOnBoard]
                in fmap (options !!) (getUserChoice options)
 
 playerAction :: GameM ()
@@ -51,6 +50,15 @@ playerAction = do
    PlayCard -> playCard
    DrawCard -> runDraw active 1
    GainCoin -> active . resources %= (<> (mempty { _gold = 1 }))
+   SelectCardOnBoard -> do
+     use (active . board) >>= getUserChoice >>= useCardOnBoard
+
+useCardOnBoard :: Int -> GameM ()
+useCardOnBoard i = do
+  card <- (fmap (!! i)) $ use (active . board)
+  let choices = (Ability "cancel" (return ())) : (card ^. abilities)
+  n <- getUserChoice choices
+  (choices !! n) ^. runAbility
 
 playCard :: GameM ()
 playCard = use (active . hand) >>= getUserChoice >>= resolveCard
