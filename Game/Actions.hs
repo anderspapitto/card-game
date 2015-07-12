@@ -20,19 +20,20 @@ foo f = do
 
 -- chooseTarget :: GameM Int
 chooseTarget = do
-  i <- getUserChoice ["Active Player", "Inactive Player"]
+  i <- getUserChoice WhichPlayer
   p <- use (if i == 0 then active else inactive)
-  n <- getUserChoice (p ^. board)
+  n <- getUserChoice $ WhichBoardCard (p ^. board)
   return (if i == 0 then active else inactive, n)
 
 -- damage :: Int -> Int -> GameM ()
 damage amount player target = do
   player . board %= tweak
  where
-  tweak l = take target l ++ [applyDamage (l !! target)] ++ drop (target + 1) l
-  applyDamage = health %~ f
-  f Nothing = Nothing
-  f (Just (total, current)) = Just (total, (current - amount))
+  tweak l = take target l ++ applyDamage (l !! target) ++ drop (target + 1) l
+  applyDamage t = let t' = (health . _Just %~ g) t in case (t' ^. health) of
+    Just (total, current) | current < 1 -> []
+    otherwise                           -> [t']
+  g (total, current) = (total, current - amount)
 
 pay :: Cost -> GameM Bool
 pay (Cost a1 b1 c1 d1 e1) = do

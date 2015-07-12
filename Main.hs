@@ -33,15 +33,6 @@ randPerm gen xs = let (n, newGen) = randomR (0, length xs - 1) gen
                       front = xs !! n
                   in front : randPerm newGen (take n xs ++ drop (n+1) xs)
 
-buttonifiedList :: MonadWidget t m => Dynamic t [ String ] -> m (Event t Int)
-buttonifiedList options = do
-  asMap <- mapDyn (fromList . map (\(i,x) -> ((i,x), x)) . zip [(0::Int)..]) options
-  foo <- listWithKey asMap go
-  let x = (fmap (fst .fst . head . toList) (updated foo))
-  return x
- where
-  go _ dv = dyn =<< mapDyn button dv
-
 baseDeck :: [Card]
 baseDeck = concat
   [ replicate 10 getPaid
@@ -56,8 +47,8 @@ deck1 = randPerm (mkStdGen 5) baseDeck
 deck2 = randPerm (mkStdGen 6) baseDeck
 
 initial_game_state :: Game
-initial_game_state = Game (Player (Cost 9 9 9 9 3) [] deck1 [] (PlayerId 0))
-                          (Player (Cost 9 9 9 9 3) [] deck2 [] (PlayerId 1))
+initial_game_state = Game (Player (Cost 9 9 9 9 3) [] deck1 [base] (PlayerId 0))
+                          (Player (Cost 9 9 9 9 3) [] deck2 [base] (PlayerId 1))
                           Nothing
 
 initial_game :: Interaction Identity ()
@@ -67,18 +58,18 @@ listChoice :: MonadWidget t m => [String] -> m (Event t Int)
 listChoice = fmap leftmost . mapM button' . zip [0..]
   where button' (i, s) = fmap (const i) <$> button s
 
-displayGame :: MonadWidget t m => Display.Game -> m ()
+displayGame :: MonadWidget t m => Display.Game -> m (Event t Int)
 displayGame g = do
   el "br" $ text ""
   elAttr "div" ("style" =: "width: 100%; display: table;") $ do
     elAttr "div" ("style" =: "display: table-row;") $ do
-      elAttr "div" ("style" =: "display: table-cell; width; 50%;") $ do
+      ret <- elAttr "div" ("style" =: "display: table-cell; width; 50%;") $ do
         text "Active Player"
         displayPlayer (g ^. Display.active)
       elAttr "div" ("style" =: "display: table-cell; width; 50%;") $ do
         text "Inactive Player"
         displayPlayer (g ^. Display.inactive)
-  return ()
+      return ret
 
 displayResources :: MonadWidget t m => Display.Cost -> m ()
 displayResources rr = do
@@ -93,13 +84,13 @@ displayResources rr = do
      replicateM (i `mod` 5) (x 32)
      return ()
 
-displayCardList :: MonadWidget t m => [Display.Card] -> m ()
-displayCardList h = do
-  void $ elAttr "div" ("class" =: "flex") $ mapM_ displayCard h
+displayCardList :: MonadWidget t m => [Display.Card] -> m (Event t Int)
+displayCardList = elAttr "div" ("class" =: "flex") . fmap leftmost . mapM f . zip [0..]
+  where f (i, c) = fmap (const i) <$> displayCard c
 
-displayCard :: MonadWidget t m => Display.Card -> m ()
-displayCard c =
-    el "div" $ do
+displayCard :: MonadWidget t m => Display.Card -> m (Event t ())
+displayCard c = do
+    (e, _) <- el' "div" $ do
       el "t1" $ text (c ^. Display.name)
       elAttr "img" ("class" =: "imgfloat" <> "src"    =: path c) $ text ""
       case c ^. Display.health of
@@ -109,13 +100,14 @@ displayCard c =
         el "div" $ text (e ^. Display.description)
       forM_ (c ^. Display.abilities) $ \a ->
         el "div" $ text (a ^. Display.description)
+    return $ _el_clicked e
  where path c = "/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. Display.img)
 
-displayPlayer :: MonadWidget t m => Display.Player -> m ()
+displayPlayer :: MonadWidget t m => Display.Player -> m (Event t Int)
 displayPlayer player = el "div" $ do
   el "div" $ do
     displayResources (player ^. Display.resources)
-  el "p" $ do
+  ret <- el "p" $ do
     text "Hand: "
     displayCardList (player ^. Display.hand)
   el "p" $ do
@@ -125,6 +117,17 @@ displayPlayer player = el "div" $ do
     text "Board: "
     displayCardList (player ^. Display.board)
   el "br" $ text ""
+  return ret
+
+quux :: Display.Selection -> [String]
+quux options =
+  let strOptions = case options of
+        Display.ActionFromBasicState -> ["Play card", "Draw card", "Gain coin", "Select card on board"]
+        Display.WhichPlayer -> ["Active Player", "Inactive Player"]
+        Display.WhichBoardCard cards -> map show cards
+        Display.WhichAbility abilities -> map show abilities
+        Display.WhichHandCard cards -> map show cards
+  in strOptions
 
 bar :: MonadWidget t m => (Maybe Int) -> Workflow t m (Maybe Int)
 bar mi = Workflow $ do
@@ -132,9 +135,12 @@ bar mi = Workflow $ do
   Right foo <- liftIO $ runEitherT getGameState
   case foo of
     Just (g, s) -> do
-      foo <- fmap Just <$> (listChoice s <* displayGame g)
+      foo <- fmap Just <$> smartStuff g s
       return (mi, fmap bar foo)
     Nothing -> return (Nothing, never)
+ where smartStuff g s = case s of
+         Display.WhichHandCard cards -> displayGame g
+         _ -> (listChoice (quux s) <* displayGame g)
 
 makeImage :: MonadWidget t m => String -> Int -> m ()
 makeImage path size = elAttr "img"

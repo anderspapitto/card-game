@@ -104,8 +104,16 @@ data Game = Game
   , _winner    :: Maybe PlayerId
   } deriving (Show, Generic)
 
+data Selection
+  = ActionFromBasicState
+  | WhichPlayer
+  | WhichBoardCard [Card]
+  | WhichAbility [Ability]
+  | WhichHandCard [Card]
+  deriving (Show)
+
 data InteractionF x
-  = GetUserChoice [String] Game (Int -> x)
+  = GetUserChoice Selection Game (Int -> x)
   | LogMessage String
 
 instance Functor InteractionF where
@@ -116,13 +124,27 @@ type Interaction m a = FreeT InteractionF m a
 
 type GameM a = StateT Game (FreeT InteractionF Identity) a
 
-getUserChoice :: Show a => [a] -> GameM Int
+getUserChoice :: Selection -> GameM Int
 getUserChoice options = do
   g <- get
-  ret <- liftF $ GetUserChoice (map show options) g id
-  if ret < length options && ret >= 0
+  let strOptions = case options of
+        ActionFromBasicState -> ["Play card", "Draw card", "Gain coin", "Select card on board"]
+        WhichPlayer -> ["Active Player", "Inactive Player"]
+        WhichBoardCard cards -> map show cards
+        WhichAbility abilities -> map show abilities
+        WhichHandCard cards -> map show cards
+  ret <- liftF $ GetUserChoice options g id
+  if ret < length strOptions && ret >= 0
     then return ret
     else getUserChoice options
+
+-- getUserChoice :: Show a => [a] -> GameM Int
+-- getUserChoice options = do
+--   g <- get
+--   ret <- liftF $ GetUserChoice (map show options) g id
+--   if ret < length options && ret >= 0
+--     then return ret
+--     else getUserChoice options
 
 logMessage :: String -> GameM ()
 logMessage = liftF . LogMessage
@@ -138,6 +160,7 @@ data PlayerAction
 --
 
 makeLenses ''Ability
+makeLenses ''Selection
 makeLenses ''Card
 makeLenses ''Game
 makeLenses ''Player

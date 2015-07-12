@@ -5,15 +5,18 @@
 
 module Game.Display where
 
-import Control.Lens
-import Data.Aeson.TH
+import           Control.Lens
+import           Control.Monad
+import           Data.Aeson.TH
+import           Data.List
 
 import qualified Game.DataTypes as D
-import Game.DataTypes (PlayerId)
+import           Game.DataTypes (PlayerId)
 
-data Ability = Ability
-  { _description :: String
-  } deriving (Show)
+data Ability = Ability { _description :: String}
+
+instance Show Ability where
+  show = _description
 
 displayAbility :: D.Ability -> Ability
 displayAbility ability = Ability (D._description ability)
@@ -35,11 +38,15 @@ data Cost = Cost
   , _belief   :: Int
   , _research :: Int
   , _actions  :: Int
-  } deriving (Show)
+  }
+
+instance Show Cost where
+  show (Cost g m b r a) =
+    let pairs = [(g, "gold"), (m, "mana"), (b, "belief"), (r, "reserach"), (a, "actions")]
+    in intercalate " and " $ map (\(x, name) -> show x ++ " " ++ name) $ filter ((/= 0) . fst) pairs
 
 displayCost :: D.Cost -> Cost
 displayCost (D.Cost g m b r a) = Cost g m b r a
-
 
 data Card = Card
   { _name       :: String
@@ -49,7 +56,10 @@ data Card = Card
   , _effects    :: [Ability]
   , _abilities  :: [Ability]
   , _img        :: String
-  } deriving (Show)
+  }
+
+instance Show Card where
+  show = _name
 
 displayCard :: D.Card -> Card
 displayCard (D.Card n c hb h e a i) = Card n (displayCost c) hb h (map displayAbility e) (map displayAbility a) i
@@ -69,6 +79,21 @@ displayAttribute (D.CombatAttr i) = CombatAttr i
 displayAttribute (D.Tag s) = Tag s
 displayAttribute (D.Health x y) = Health x y
 displayAttribute D.HitsBoard = HitsBoard
+
+data Selection
+  = ActionFromBasicState
+  | WhichPlayer
+  | WhichBoardCard [Card]
+  | WhichAbility [Ability]
+  | WhichHandCard [Card]
+  deriving (Show)
+
+displaySelection :: D.Selection -> Selection
+displaySelection D.ActionFromBasicState = ActionFromBasicState
+displaySelection D.WhichPlayer = WhichPlayer
+displaySelection (D.WhichBoardCard cards) = WhichBoardCard (map displayCard cards)
+displaySelection (D.WhichAbility abilities) = WhichAbility (map displayAbility abilities)
+displaySelection (D.WhichHandCard cards) = WhichHandCard (map displayCard cards)
 
 data Player = Player
   { _resources :: Cost
@@ -91,16 +116,20 @@ data Game = Game
 displayGame :: D.Game -> Game
 displayGame (D.Game a i w) = Game (displayPlayer a) (displayPlayer i) w
 
--- derive toJSON
-deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''Ability
-deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''Cost
-deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''Card
-deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''PlayerId
-deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''Player
-deriveJSON defaultOptions { fieldLabelModifier = drop 4 } ''Game
+liftM concat $ mapM (deriveJSON defaultOptions { fieldLabelModifier = drop 4 })
+  [ ''Ability
+  , ''Cost
+  , ''Card
+  , ''PlayerId
+  , ''Player
+  , ''Selection
+  , ''Game
+  ]
 
-makeLenses ''Ability
-makeLenses ''Card
-makeLenses ''Game
-makeLenses ''Player
-makeLenses ''Cost
+liftM concat $ mapM makeLenses
+  [ ''Ability
+  , ''Card
+  , ''Game
+  , ''Player
+  , ''Cost
+  ]

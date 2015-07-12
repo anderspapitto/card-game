@@ -18,8 +18,22 @@ runGame = do
   runDraw active 5
   runDraw inactive 5
 --  logMessage "game is about to start"
-  forever (runTurn >> switchTurns)
+  go
+ where go = do
+         runTurn
+         (won, lost) <- checkVictory
+         case (won, lost) of
+           (True, _) -> void $ logMessage "you won"
+           (False, True) -> void $ logMessage "you lost"
+           (False, False) -> switchTurns >> go
 
+checkVictory :: GameM (Bool, Bool)
+checkVictory =
+  let g p = fmap (not . getAny) $ use $ p . board . traversed . name . to (== "base") . to Any
+  in do
+    x <- g active
+    y <- g inactive
+    return (x, y)
 
 switchTurns :: GameM ()
 switchTurns = do
@@ -41,7 +55,7 @@ resolveCard n = do
 
 chooseAction :: GameM PlayerAction
 chooseAction = let options = [PlayCard, DrawCard, GainCoin, SelectCardOnBoard]
-               in fmap (options !!) (getUserChoice options)
+               in fmap (options !!) (getUserChoice ActionFromBasicState)
 
 playerAction :: GameM ()
 playerAction = do
@@ -51,17 +65,17 @@ playerAction = do
    DrawCard -> runDraw active 1
    GainCoin -> active . resources %= (<> (mempty { _gold = 1 }))
    SelectCardOnBoard -> do
-     use (active . board) >>= getUserChoice >>= useCardOnBoard
+     use (active . board) >>= getUserChoice . WhichBoardCard >>= useCardOnBoard
 
 useCardOnBoard :: Int -> GameM ()
 useCardOnBoard i = do
   card <- (fmap (!! i)) $ use (active . board)
   let choices = (Ability "cancel" (return ())) : (card ^. abilities)
-  n <- getUserChoice choices
+  n <- getUserChoice $ WhichAbility choices
   (choices !! n) ^. runAbility
 
 playCard :: GameM ()
-playCard = use (active . hand) >>= getUserChoice >>= resolveCard
+playCard = use (active . hand) >>= getUserChoice . WhichHandCard >>= resolveCard
 
 runTurn :: GameM ()
 runTurn = do
