@@ -12,35 +12,32 @@ import           Control.Monad.Identity
 import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.Free
 import           Game.DataTypes
-import qualified Game.Display as Display
 import           Network.Wai
 import           Network.Wai.Handler.Warp
 import           Servant
 import           Servant.Client
 
 type GameApi
-  =    "game"                          :> Get  '[JSON] (Maybe (Display.Game, Display.Selection))
-  :<|> "input" :> QueryParam "inp" Int :> Post '[JSON] ()
+  =    "game"                                        :> Get  '[JSON] (Maybe (Game, Selection))
+  :<|> "input" :> QueryParam "inp" SelectionResponse :> Post '[JSON] ()
 
 serveGame
   :: MVar (Interaction Identity ())
-  -> EitherT ServantErr IO (Maybe (Display.Game, Display.Selection))
+  -> EitherT ServantErr IO (Maybe (Game, Selection))
 serveGame game = do
   p <- liftIO $ readMVar game
   return $ case runIdentity $ runFreeT p of
-    Free (GetUserChoice s g _) -> Just (Display.displayGame g, Display.displaySelection s)
-    Free (LogMessage s)        -> error "bad thrice"
+    Free (GetUserChoice s g _) -> Just (g, s)
     Pure ()                    -> Nothing
 
 serveInput
   :: MVar (Interaction Identity ())
-  -> Maybe Int
+  -> Maybe SelectionResponse
   -> EitherT ServantErr IO ()
 serveInput game mi = case mi of
   Nothing -> return ()
-  Just i -> liftIO $ modifyMVar_ game $ \p -> case runIdentity $ runFreeT p of
-    Free (GetUserChoice _ _ k) -> return $ k i
-    Free (LogMessage s)        -> error "bad here"
+  Just sr -> liftIO $ modifyMVar_ game $ \p -> case runIdentity $ runFreeT p of
+    Free (GetUserChoice _ _ k) -> return $ k sr
     Pure ()                    -> error "bad there"
 
 server :: MVar (Interaction Identity ()) -> Server GameApi
@@ -52,8 +49,9 @@ gameAPI = Proxy
 app :: MVar (Interaction Identity ()) -> Application
 app game = serve gameAPI (server game)
 
-getGameState :: EitherT ServantError IO (Maybe (Display.Game, Display.Selection))
-sendInput :: Maybe Int -> EitherT ServantError IO ()
+getGameState :: EitherT ServantError IO (Maybe (Game, Selection))
+sendInput :: Maybe SelectionResponse -> EitherT ServantError IO ()
+
 getGameState :<|> sendInput = client gameAPI (BaseUrl Http "localhost" 8081)
 
 apiMain :: (Interaction Identity ()) -> IO ()

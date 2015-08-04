@@ -13,6 +13,9 @@ import Control.Monad
 import Game.DataTypes
 import Game.Actions
 
+logMessage :: String -> GameM ()
+logMessage m = messages %= (m :)
+
 runGame :: GameM ()
 runGame = do
   runDraw active 5
@@ -37,6 +40,7 @@ checkVictory =
 
 switchTurns :: GameM ()
 switchTurns = do
+  logMessage "Turn ends. Switching players"
   a <- use active
   b <- use inactive
   active .= b
@@ -53,29 +57,25 @@ resolveCard n = do
     when (card ^. hitsBoard) $
       active . board %= (card :)
 
-chooseAction :: GameM PlayerAction
-chooseAction = let options = [PlayCard, DrawCard, GainCoin, SelectCardOnBoard]
-               in fmap (options !!) (getUserChoice ActionFromBasicState)
-
 playerAction :: GameM ()
 playerAction = do
-  action <- chooseAction
-  case action of
-   PlayCard -> playCard
-   DrawCard -> runDraw active 1
-   GainCoin -> active . resources %= (<> (mempty { _gold = 1 }))
-   SelectCardOnBoard -> do
-     use (active . board) >>= getUserChoice . WhichBoardCard >>= useCardOnBoard
+  sr <- getUserChoice ActionFromBasicState
+  case sr of
+    ResponseGainCoin -> active . resources %= (<> (mempty { _gold = 1 }))
+    ResponseDrawCard -> runDraw active 1
+    ResponseHandCard Active i -> playCard i
+    ResponseBoardCard Active i -> useCardOnBoard i
 
 useCardOnBoard :: Int -> GameM ()
-useCardOnBoard i = do
-  card <- (fmap (!! i)) $ use (active . board)
-  let choices = (Ability "cancel" (return ())) : (card ^. abilities)
-  n <- getUserChoice $ WhichAbility choices
-  (choices !! n) ^. runAbility
+useCardOnBoard i = return ()
+--                    do
+--   card <- (fmap (!! i)) $ use (active . board)
+--   let choices = (Ability "cancel" (return ())) : (card ^. abilities)
+--   n <- getUserChoice $ WhichAbility choices
+--   (choices !! n) ^. runAbility
 
-playCard :: GameM ()
-playCard = use (active . hand) >>= getUserChoice . WhichHandCard >>= resolveCard
+playCard :: Int -> GameM ()
+playCard = resolveCard
 
 runTurn :: GameM ()
 runTurn = do

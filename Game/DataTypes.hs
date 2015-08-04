@@ -1,15 +1,20 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Game.DataTypes where
 
 import Control.Lens
+import Control.Monad
 import Control.Monad.Trans.Free
 import Control.Monad.Trans.State
+import Data.Aeson
+import Data.Aeson.TH
 import Data.List
 import GHC.Generics
+import Servant.Common.Text
 
 type Activate = Cost
 data Damage = Damage Int () deriving (Show)
@@ -37,12 +42,6 @@ data Resource = Resource
   }
 
 data UpkeepStrategy = Reset | Keep | Subtract Integer
-
--- resources = [ gold, mana, belief, research ]
---   where gold = Resource "gold" 0 Keep
---         mana = Resource "mana" 0 Reset
---         belief = Resource "belief" 0 (Subtract 2)
---         research = Resource "research" 0 Keep
 
 data Cost = Cost
   { _gold     :: Int
@@ -102,52 +101,52 @@ data Game = Game
   { _active    :: Player
   , _inactive  :: Player
   , _winner    :: Maybe PlayerId
+  , _messages  :: [String]
   } deriving (Show, Generic)
+
+data PlayerActiveness = Active | Inactive deriving (Show, Read)
 
 data Selection
   = ActionFromBasicState
   | WhichPlayer
-  | WhichBoardCard [Card]
+  | WhichBoardCard PlayerActiveness
   | WhichAbility [Ability]
   | WhichHandCard [Card]
   deriving (Show)
 
+data SelectionResponse
+  = ResponseGainCoin
+  | ResponseDrawCard
+  | ResponseHandCard PlayerActiveness Int
+  | ResponseBoardCard PlayerActiveness Int
+  deriving (Show, Read)
+
+instance FromText SelectionResponse where
+  fromText = fmap read . fromText
+
+instance ToText SelectionResponse where
+  toText = toText . show
+
 data InteractionF x
-  = GetUserChoice Selection Game (Int -> x)
-  | LogMessage String
+  = GetUserChoice Selection Game (SelectionResponse -> x)
 
 instance Functor InteractionF where
   fmap f (GetUserChoice s g k) = GetUserChoice s g (f . k)
-  fmap _ (LogMessage s) = LogMessage s
 
 type Interaction m a = FreeT InteractionF m a
 
 type GameM a = StateT Game (FreeT InteractionF Identity) a
 
-getUserChoice :: Selection -> GameM Int
+instance ToJSON (StateT Game (FreeT InteractionF Identity) a)
+  where toJSON = const Null
+
+instance FromJSON (StateT Game (FreeT InteractionF Identity) a)
+  where parseJSON = const (return undefined)
+
+getUserChoice :: Selection -> GameM SelectionResponse
 getUserChoice options = do
   g <- get
-  let strOptions = case options of
-        ActionFromBasicState -> ["Play card", "Draw card", "Gain coin", "Select card on board"]
-        WhichPlayer -> ["Active Player", "Inactive Player"]
-        WhichBoardCard cards -> map show cards
-        WhichAbility abilities -> map show abilities
-        WhichHandCard cards -> map show cards
-  ret <- liftF $ GetUserChoice options g id
-  if ret < length strOptions && ret >= 0
-    then return ret
-    else getUserChoice options
-
--- getUserChoice :: Show a => [a] -> GameM Int
--- getUserChoice options = do
---   g <- get
---   ret <- liftF $ GetUserChoice (map show options) g id
---   if ret < length options && ret >= 0
---     then return ret
---     else getUserChoice options
-
-logMessage :: String -> GameM ()
-logMessage = liftF . LogMessage
+  liftF $ GetUserChoice options g id
 
 data PlayerAction
   = PlayCard
@@ -156,12 +155,22 @@ data PlayerAction
   | SelectCardOnBoard
   deriving (Show)
 
--- Derive lenses
---
+liftM concat $ mapM (deriveJSON defaultOptions { fieldLabelModifier = drop 4 })
+  [ ''Ability
+  , ''PlayerActiveness
+  , ''Cost
+  , ''Card
+  , ''PlayerId
+  , ''Player
+  , ''Selection
+  , ''SelectionResponse
+  , ''Game
+  ]
 
-makeLenses ''Ability
-makeLenses ''Selection
-makeLenses ''Card
-makeLenses ''Game
-makeLenses ''Player
-makeLenses ''Cost
+liftM concat $ mapM makeLenses
+  [ ''Ability
+  , ''Card
+  , ''Game
+  , ''Player
+  , ''Cost
+  ]

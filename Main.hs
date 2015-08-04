@@ -8,6 +8,7 @@ module Main where
 import           Clay (render, putCss)
 import           Control.Concurrent
 import           Control.Lens
+import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Identity
 import           Control.Monad.Trans.Either
@@ -20,11 +21,10 @@ import           Reflex
 import           Reflex.Dom hiding (attributes)
 import           System.Random
 
-import           Game.ApiServer
+import           Game.ApiServer (apiMain, getGameState, sendInput)
 import           Game.Css
 import           Game.Cards
 import           Game.DataTypes
-import qualified Game.Display as Display
 import           Game.Logic
 
 randPerm :: StdGen -> [a] -> [a]
@@ -50,86 +50,82 @@ initial_game_state :: Game
 initial_game_state = Game (Player (Cost 9 9 9 9 3) [] deck1 [base] (PlayerId 0))
                           (Player (Cost 9 9 9 9 3) [] deck2 [base] (PlayerId 1))
                           Nothing
+                          []
 
 initial_game :: Interaction Identity ()
 initial_game = void $ execStateT runGame initial_game_state
 
-listChoice :: MonadWidget t m => [String] -> m (Event t Int)
-listChoice = fmap leftmost . mapM button' . zip [0..]
-  where button' (i, s) = fmap (const i) <$> button s
+listChoice :: (MonadWidget t m, Show a) => [a] -> m (Event t a)
+listChoice = fmap leftmost . mapM button'
+  where button' s = fmap (const s) <$> button (show s)
 
-displayGame :: MonadWidget t m => Display.Game -> m (Event t Int)
+displayGame :: MonadWidget t m => Game -> m (Event t SelectionResponse)
+                                          --(Event t Int, Event t Int), (Event t Int, Event t Int))
 displayGame g = do
-  el "br" $ text ""
-  elAttr "div" ("style" =: "width: 100%; display: table;") $ do
+  el "br" $ return ()
+  ret <- elAttr "div" ("style" =: "width: 1600; display: table;") $ do
     elAttr "div" ("style" =: "display: table-row;") $ do
-      ret <- elAttr "div" ("style" =: "display: table-cell; width; 50%;") $ do
+      active <- elAttr "div" ("style" =: "display: table-cell; width; 800;") $ do
         text "Active Player"
-        displayPlayer (g ^. Display.active)
-      elAttr "div" ("style" =: "display: table-cell; width; 50%;") $ do
+        displayPlayer (g ^. active) Active
+      inactive <- elAttr "div" ("style" =: "display: table-cell; width; 50%;") $ do
         text "Inactive Player"
-        displayPlayer (g ^. Display.inactive)
-      return ret
+        displayPlayer (g ^. inactive) Inactive
+      return $ leftmost [active, inactive]
+  el "div" $ do
+    text "Messages"
+    forM_ (g ^. messages) $ \m -> el "div" (text m)
+  return ret
 
-displayResources :: MonadWidget t m => Display.Cost -> m ()
+displayResources :: MonadWidget t m => Cost -> m ()
 displayResources rr = do
-  foo (rr ^. Display.gold    ) goldCoin
-  foo (rr ^. Display.mana    ) flame
-  foo (rr ^. Display.belief  ) pray
-  foo (rr ^. Display.research) brain
-  foo (rr ^. Display.actions ) clock
+  foo (rr ^. gold    ) goldCoin
+  foo (rr ^. mana    ) flame
+  foo (rr ^. belief  ) pray
+  foo (rr ^. research) brain
+  foo (rr ^. actions ) clock
  where
    foo i x = elAttr "div" ("style" =: "height: 48") $ do
      replicateM (i `div` 5) (x 40)
      replicateM (i `mod` 5) (x 32)
      return ()
 
-displayCardList :: MonadWidget t m => [Display.Card] -> m (Event t Int)
+displayCardList :: MonadWidget t m => [Card] -> m (Event t Int)
 displayCardList = elAttr "div" ("class" =: "flex") . fmap leftmost . mapM f . zip [0..]
   where f (i, c) = fmap (const i) <$> displayCard c
 
-displayCard :: MonadWidget t m => Display.Card -> m (Event t ())
+displayCard :: MonadWidget t m => Card -> m (Event t ())
 displayCard c = do
-    (e, _) <- el' "div" $ do
-      el "t1" $ text (c ^. Display.name)
-      elAttr "img" ("class" =: "imgfloat" <> "src"    =: path c) $ text ""
-      case c ^. Display.health of
-        Nothing -> return ()
-        Just (total, current) -> el "t2" $ text (show total ++ " (" ++ show current ++ ")")
-      forM_ (c ^. Display.effects) $ \e ->
-        el "div" $ text (e ^. Display.description)
-      forM_ (c ^. Display.abilities) $ \a ->
-        el "div" $ text (a ^. Display.description)
-    return $ _el_clicked e
- where path c = "/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. Display.img)
+  (e, _) <- el' "div" $ do
+    el "t1" $ text (c ^. name)
+    elAttr "img" ("class" =: "imgfloat" <> "src"    =: path c) $ return ()
+    case c ^. health of
+      Nothing -> return ()
+      Just (total, current) -> el "t2" $ text (show total ++ " (" ++ show current ++ ")")
+    forM_ (c ^. effects) $ \e ->
+      el "div" $ text (e ^. description)
+    forM_ (c ^. abilities) $ \a ->
+      el "div" $ text (a ^. description)
+  return $ _el_clicked e
+  where path c = "/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. img)
 
-displayPlayer :: MonadWidget t m => Display.Player -> m (Event t Int)
-displayPlayer player = el "div" $ do
+displayPlayer :: MonadWidget t m => Player -> PlayerActiveness -> m (Event t SelectionResponse)
+displayPlayer player a = el "div" $ do
   el "div" $ do
-    displayResources (player ^. Display.resources)
-  ret <- el "p" $ do
+    displayResources (player ^. resources)
+  hand <- el "p" $ do
     text "Hand: "
-    displayCardList (player ^. Display.hand)
+    displayCardList (player ^. hand)
   el "p" $ do
     text "Cards in Deck: "
-    text $ player ^. Display.deck . to show
-  el "div" $ do
+    text $ player ^. deck . to length . to show
+  board <- el "div" $ do
     text "Board: "
-    displayCardList (player ^. Display.board)
-  el "br" $ text ""
-  return ret
+    displayCardList (player ^. board)
+  el "br" $ return ()
+  return $ leftmost [fmap (ResponseHandCard a) hand, fmap (ResponseBoardCard a) board]
 
-quux :: Display.Selection -> [String]
-quux options =
-  let strOptions = case options of
-        Display.ActionFromBasicState -> ["Play card", "Draw card", "Gain coin", "Select card on board"]
-        Display.WhichPlayer -> ["Active Player", "Inactive Player"]
-        Display.WhichBoardCard cards -> map show cards
-        Display.WhichAbility abilities -> map show abilities
-        Display.WhichHandCard cards -> map show cards
-  in strOptions
-
-bar :: MonadWidget t m => (Maybe Int) -> Workflow t m (Maybe Int)
+bar :: MonadWidget t m => (Maybe SelectionResponse) -> Workflow t m (Maybe SelectionResponse)
 bar mi = Workflow $ do
   liftIO $ runEitherT (sendInput mi)
   Right foo <- liftIO $ runEitherT getGameState
@@ -139,8 +135,12 @@ bar mi = Workflow $ do
       return (mi, fmap bar foo)
     Nothing -> return (Nothing, never)
  where smartStuff g s = case s of
-         Display.WhichHandCard cards -> displayGame g
-         _ -> (listChoice (quux s) <* displayGame g)
+         ActionFromBasicState -> do
+           x <- listChoice [ResponseDrawCard, ResponseGainCoin]
+           y <- displayGame g
+           return $ leftmost [x, y]
+         WhichAbility abilities -> undefined
+         _ -> displayGame g
 
 makeImage :: MonadWidget t m => String -> Int -> m ()
 makeImage path size = elAttr "img"

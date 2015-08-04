@@ -9,7 +9,7 @@ gameCss = do
   body ? background grey
   ".flex" ? do
     "display" -: "-webkit-flex"
-    "-webkit-flex-direction" -: "row"
+    "-webkit-flex-flow" -: "row wrap"
   ".flex" |> "div" ? do
     border solid (px 1) black
     height (px 200)

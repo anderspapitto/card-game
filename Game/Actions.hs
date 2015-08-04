@@ -20,10 +20,10 @@ foo f = do
 
 -- chooseTarget :: GameM Int
 chooseTarget = do
-  i <- getUserChoice WhichPlayer
-  p <- use (if i == 0 then active else inactive)
-  n <- getUserChoice $ WhichBoardCard (p ^. board)
-  return (if i == 0 then active else inactive, n)
+  choice <- getUserChoice WhichPlayer
+  case choice of
+    ResponseBoardCard   Active i -> return (active, i)
+    ResponseBoardCard Inactive i -> return (inactive, i)
 
 -- damage :: Int -> Int -> GameM ()
 damage amount player target = do
