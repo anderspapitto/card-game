@@ -4,10 +4,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PostfixOperators #-}
 
-module Game.Cards where
+module Cards where
 
-import Game.DataTypes
-import Game.Actions
+import DataTypes
+import Actions
 
 draw3 :: Card
 draw3 = Card

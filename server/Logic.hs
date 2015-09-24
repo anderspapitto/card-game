@@ -4,14 +4,14 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Game.Logic where
+module Logic where
 
 import Data.Monoid
 import Control.Lens
 import Control.Monad
 
-import Game.DataTypes
-import Game.Actions
+import DataTypes
+import Actions
 
 logMessage :: String -> GameM ()
 logMessage m = messages %= (m :)

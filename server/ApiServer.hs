@@ -4,18 +4,18 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Game.ApiServer where
+module ApiServer where
 
 import           Control.Concurrent.MVar
 import           Control.Monad.IO.Class
 import           Control.Monad.Identity
 import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.Free
-import           Game.DataTypes
 import           Network.Wai
 import           Network.Wai.Handler.Warp
 import           Servant
-import           Servant.Client
+
+import           DataTypes
 
 type GameApi
   =    "game"                                        :> Get  '[JSON] (Maybe (Game, Selection))
@@ -49,10 +49,10 @@ gameAPI = Proxy
 app :: MVar (Interaction Identity ()) -> Application
 app game = serve gameAPI (server game)
 
-getGameState :: EitherT ServantError IO (Maybe (Game, Selection))
-sendInput :: Maybe SelectionResponse -> EitherT ServantError IO ()
-
-getGameState :<|> sendInput = client gameAPI (BaseUrl Http "localhost" 8081)
+-- getGameState :: EitherT ServantError IO (Maybe (Game, Selection))
+-- sendInput :: Maybe SelectionResponse -> EitherT ServantError IO ()
+--
+-- getGameState :<|> sendInput = client gameAPI (BaseUrl Http "localhost" 8081)
 
 apiMain :: (Interaction Identity ()) -> IO ()
 apiMain initial_game = do

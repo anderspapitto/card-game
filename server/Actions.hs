@@ -5,9 +5,9 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Game.Actions where
+module Actions where
 
-import Game.DataTypes
+import DataTypes
 
 import Data.Maybe
 import Data.Monoid
