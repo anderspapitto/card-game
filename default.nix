@@ -1,7 +1,7 @@
 { stdenv, ghc, ghcjs, nodejs }:
 
 let ghc-env = ghc.ghcWithPackages (p: with p; [
-      lens random text servant servant-server clay HTTP wai warp reflex-dom # network network free text cabal-install servant-client
+      lens random text servant servant-server clay HTTP wai warp reflex-dom servant-client # network network free text cabal-install servant-client
     ]);
     ghcjs-env = ghcjs.ghcWithPackages (p: with p; [
       gtk2hs-buildtools # reflex-dom # lens random network free clay text servant network wai warp servant-server  # servant-client cabal-install

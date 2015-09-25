@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module DataTypes where
+module Game.DataTypes where
 
 import Control.Lens
 import Control.Monad

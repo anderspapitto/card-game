@@ -75,7 +75,7 @@ displayCard c = do
       el "div" $ text (e ^. description)
     forM_ (c ^. abilities) $ \a ->
       el "div" $ text (a ^. description)
-  return $ _el_clicked e
+  return $ (domEvent Click) e
   where path c = "/home/anders/devel/card-game/images/by-canon-name/" ++ (c ^. img)
 
 displayPlayer :: MonadWidget t m => Player -> PlayerActiveness -> m (Event t SelectionResponse)
@@ -137,6 +137,8 @@ fooMain = mainWidgetWithCss (encodeUtf8 . toStrict $ render gameCss) $ el "div" 
   el "p" $ text "Welcome to Card Game"
   workflowView (bar Nothing)
   return ()
+
+initial_game = undefined
 
 main :: IO ()
 main = do
