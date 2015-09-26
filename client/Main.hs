@@ -10,6 +10,7 @@ import           Control.Concurrent
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.IO.Class
+import           Control.Monad.State
 import           Control.Monad.Trans.Either
 import           Data.Map (toList, fromList)
 import           Data.Monoid
@@ -17,6 +18,7 @@ import           Data.Text.Encoding
 import           Data.Text.Lazy (toStrict)
 import           Reflex
 import           Reflex.Dom hiding (attributes)
+import           System.Random
 
 import           Game.ApiServer (apiMain, getGameState, sendInput)
 import           Game.Css
@@ -138,7 +140,33 @@ fooMain = mainWidgetWithCss (encodeUtf8 . toStrict $ render gameCss) $ el "div" 
   workflowView (bar Nothing)
   return ()
 
-initial_game = undefined
+randPerm :: StdGen -> [a] -> [a]
+randPerm   _ [] = []
+randPerm gen xs = let (n, newGen) = randomR (0, length xs - 1) gen
+                      front = xs !! n
+                  in front : randPerm newGen (take n xs ++ drop (n+1) xs)
+
+baseDeck :: [Card]
+baseDeck = concat
+  [ replicate 10 getPaid
+  , replicate 10 bear
+  , replicate 10 burn3
+  , replicate 10 draw3
+  , replicate 5 base
+  ]
+
+deck1, deck2 :: [Card]
+deck1 = randPerm (mkStdGen 5) baseDeck
+deck2 = randPerm (mkStdGen 6) baseDeck
+
+initial_game_state :: Game
+initial_game_state = Game (Player (Cost 9 9 9 9 3) [] deck1 [base] (PlayerId 0))
+                          (Player (Cost 9 9 9 9 3) [] deck2 [base] (PlayerId 1))
+                          Nothing
+                          []
+
+initial_game :: Interaction Identity ()
+initial_game = void $ execStateT runGame initial_game_state
 
 main :: IO ()
 main = do
